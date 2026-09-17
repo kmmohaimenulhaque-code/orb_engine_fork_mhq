@@ -86,15 +86,20 @@ copy_runtime_file() {
     fi
 
     local found
-    found="$(find /tmp/find_orb \
-        -type f \
-        -name "$filename" \
-        -print -quit)"
+
+    found="$(
+        find /tmp/find_orb \
+            -type f \
+            -name "$filename" \
+            -print -quit
+    )"
 
     if [ -n "$found" ]; then
         echo "Copying $filename from $found"
+
         cp "$found" \
            "$PROJECT_ROOT/backend/findorb-data/$filename"
+
         return 0
     fi
 
@@ -102,31 +107,59 @@ copy_runtime_file() {
     return 1
 }
 
-echo "=== Required configuration ==="
+echo "========================================"
+echo " Required Find_Orb configuration"
+echo "========================================"
 
 copy_runtime_file "environ.def"
 copy_runtime_file "cospar.txt"
+copy_runtime_file "efindorb.txt"
 
-echo "=== Observatory data ==="
+echo "========================================"
+echo " Find_Orb format/help files"
+echo "========================================"
 
-copy_runtime_file "ObsCodes.html" || \
-copy_runtime_file "ObsCodes.htm"
-
-copy_runtime_file "rovers.txt"
-
-echo "=== Additional Find_Orb configuration ==="
-
+copy_runtime_file "dfindorb.txt" || true
+copy_runtime_file "ffindorb.txt" || true
 copy_runtime_file "command.txt" || true
 copy_runtime_file "eph_type.txt" || true
-copy_runtime_file "fo_options.txt" || true
+copy_runtime_file "eph_expl.txt" || true
+copy_runtime_file "find_orb.def" || true
+copy_runtime_file "hints.def" || true
 
-echo "=== Installing DE430 planetary ephemeris ==="
+echo "========================================"
+echo " Find_Orb runtime data"
+echo "========================================"
+
+copy_runtime_file "rovers.txt" || true
+copy_runtime_file "ObsCodes.html" || \
+copy_runtime_file "ObsCodes.htm" || true
+
+copy_runtime_file "asteroid_ephemeris.txt" || true
+
+echo "========================================"
+echo " Additional reference/runtime files"
+echo "========================================"
+
+copy_runtime_file "details.txt" || true
+copy_runtime_file "force.txt" || true
+copy_runtime_file "frame_he.txt" || true
+copy_runtime_file "full.txt" || true
+copy_runtime_file "geo_rect.txt" || true
+copy_runtime_file "calendar.txt" || true
+copy_runtime_file "example.txt" || true
+
+echo "========================================"
+echo " Installing DE430 planetary ephemeris"
+echo "========================================"
 
 wget -O \
     "$PROJECT_ROOT/backend/findorb-data/linux_p1550p2650.430t" \
     ftp://ssd.jpl.nasa.gov/pub/eph/planets/Linux/de430t/linux_p1550p2650.430t
 
-echo "=== Verifying Find_Orb installation ==="
+echo "========================================"
+echo " Verifying Find_Orb installation"
+echo "========================================"
 
 if [ ! -f "$PROJECT_ROOT/backend/bin/fo" ]; then
     echo "ERROR: Find_Orb executable was not created."
@@ -144,6 +177,11 @@ fi
 
 if [ ! -f "$PROJECT_ROOT/backend/findorb-data/cospar.txt" ]; then
     echo "ERROR: cospar.txt is missing."
+    exit 1
+fi
+
+if [ ! -f "$PROJECT_ROOT/backend/findorb-data/efindorb.txt" ]; then
+    echo "ERROR: efindorb.txt is missing."
     exit 1
 fi
 
@@ -168,14 +206,19 @@ ls -lh \
     "$PROJECT_ROOT/backend/findorb-data"
 
 echo ""
-echo "Environment:"
+echo "Required environment:"
 ls -lh \
     "$PROJECT_ROOT/backend/findorb-data/environ.def"
 
 echo ""
-echo "COSPAR:"
+echo "Required MPC data:"
 ls -lh \
     "$PROJECT_ROOT/backend/findorb-data/cospar.txt"
+
+echo ""
+echo "Required Find_Orb format data:"
+ls -lh \
+    "$PROJECT_ROOT/backend/findorb-data/efindorb.txt"
 
 echo ""
 echo "DE430:"
