@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NASA Orbit Simulator – Space Apps 2026</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="logo">
+        <span class="nasa">NASA</span> Orbit Simulator
+        <span class="badge">Space Apps 2026 MVP</span>
+      </div>
+      <div class="status" id="status">Ready</div>
+    </header>
+
+    <div class="main">
+      <aside class="panel">
+        <h2>Orbit Input</h2>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="kepler">Keplerian</button>
+          <button class="tab" data-tab="sample">Samples</button>
+        </div>
+
+        <div id="kepler-tab" class="tab-content active">
+          <label>Semi-major axis (km)</label>
+          <input type="number" id="a" value="6778" step="1" />
+
+          <label>Eccentricity</label>
+          <input type="number" id="ecc" value="0.0005" step="0.0001" min="0" max="0.99" />
+
+          <label>Inclination (deg)</label>
+          <input type="number" id="inc" value="51.64" step="0.1" />
+
+          <label>RAAN (deg)</label>
+          <input type="number" id="raan" value="30" step="1" />
+
+          <label>Arg. of Periapsis (deg)</label>
+          <input type="number" id="argp" value="0" step="1" />
+
+          <label>True Anomaly (deg)</label>
+          <input type="number" id="nu" value="0" step="1" />
+
+          <label>Duration (min)</label>
+          <input type="number" id="duration" value="120" step="10" min="10" max="1440" />
+        </div>
+
+        <div id="sample-tab" class="tab-content">
+          <button class="sample-btn" onclick="loadSample('iss')">Load ISS-like</button>
+          <button class="sample-btn" onclick="loadSample('starlink')">Load Starlink-like</button>
+          <p class="hint">These are approximate elements for quick demo. Real TLEs can be added later.</p>
+        </div>
+
+        <button id="propagate-btn" class="primary">Propagate & Visualize</button>
+
+        <div id="info" class="info-box hidden">
+          <h3 id="sat-name">—</h3>
+          <p>Period: <span id="period">—</span> min</p>
+          <p>States: <span id="n-states">—</span></p>
+        </div>
+
+        <div class="footer-note">
+          Engine: poliastro + CesiumJS<br>
+          Future: Find_Orb residual bridge
+        </div>
+      </aside>
+
+      <div id="cesiumContainer"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

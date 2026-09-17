@@ -1,0 +1,232 @@
+:root {
+  --bg: #0b0e17;
+  --panel: #121826;
+  --accent: #00d4ff;
+  --accent2: #ff6b35;
+  --text: #e8eef7;
+  --muted: #8b9bb4;
+  --border: #1e2a3a;
+  --success: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 1.2rem;
+  background: linear-gradient(90deg, #0d1520, #121c2b);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.logo .nasa {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.badge {
+  font-size: 0.7rem;
+  background: #1a2a40;
+  color: var(--accent);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.6rem;
+  vertical-align: middle;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.status.busy {
+  color: var(--accent);
+}
+
+.status.ok {
+  color: var(--success);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.panel {
+  width: 320px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.panel h2 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.tab {
+  flex: 1;
+  background: #1a2435;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tab.active {
+  background: #1e3a5f;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tab-content {
+  display: none;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tab-content.active {
+  display: flex;
+}
+
+label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+input[type="number"] {
+  background: #0d1520;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.primary {
+  background: linear-gradient(135deg, #00b4d8, #0077b6);
+  border: none;
+  color: white;
+  padding: 0.7rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 180, 216, 0.35);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sample-btn {
+  background: #1a2a40;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.55rem;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.sample-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.info-box {
+  background: #0d1520;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.info-box.hidden {
+  display: none;
+}
+
+.info-box h3 {
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+}
+
+.footer-note {
+  margin-top: auto;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.4;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+#cesiumContainer {
+  flex: 1;
+  position: relative;
+}
+
+/* Cesium overrides for dark theme */
+.cesium-viewer-bottom {
+  display: none;
+}
