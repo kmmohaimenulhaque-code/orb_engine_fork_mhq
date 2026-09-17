@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from orbital_service import solve_orbit
-
+import logging
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Orbit Intelligence API",
@@ -74,7 +75,11 @@ def calculate_orbit(request: OrbitRequest):
             detail=str(exc),
         ) from exc
     except RuntimeError as exc:
+    logger.exception("Orbit solver failed")
         raise HTTPException(
             status_code=500,
             detail=str(exc),
-        ) from exc
+    )     from exc
+
+
+   
