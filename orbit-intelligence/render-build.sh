@@ -61,9 +61,18 @@ cp /tmp/find_orb/fo "$PROJECT_ROOT/backend/bin/fo"
 
 chmod +x "$PROJECT_ROOT/backend/bin/fo"
 
+echo "=== Installing DE430 planetary ephemeris ==="
+
+mkdir -p "$HOME/.find_orb"
+
+if [ ! -f "$HOME/.find_orb/linux_p1550p2650.430t" ]; then
+    wget -O "$HOME/.find_orb/linux_p1550p2650.430t" \
+        ftp://ssd.jpl.nasa.gov/pub/eph/planets/Linux/de430t/linux_p1550p2650.430t
+fi
+
 echo "========================================"
 echo " Find_Orb successfully built!"
-echo " Installed at:"
+echo " Executable:"
 echo " $PROJECT_ROOT/backend/bin/fo"
 echo "========================================"
 
