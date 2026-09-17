@@ -60,12 +60,12 @@ make
 
 echo "=== Find_Orb executable built successfully ==="
 
-echo "=== Preparing application runtime directories ==="
+echo "=== Preparing runtime directories ==="
 
 mkdir -p "$PROJECT_ROOT/backend/bin"
 mkdir -p "$PROJECT_ROOT/backend/findorb-data"
 
-echo "=== Copying Find_Orb executable ==="
+echo "=== Installing Find_Orb executable ==="
 
 cp /tmp/find_orb/fo \
    "$PROJECT_ROOT/backend/bin/fo"
@@ -73,82 +73,52 @@ cp /tmp/find_orb/fo \
 chmod +x \
    "$PROJECT_ROOT/backend/bin/fo"
 
-echo "=== Copying Find_Orb runtime configuration ==="
+echo "=== Locating Find_Orb runtime files ==="
 
-if [ -d "/tmp/find_orb" ]; then
+copy_runtime_file() {
+    local filename="$1"
 
-    echo "Searching Find_Orb source tree for runtime data..."
-
-    find /tmp/find_orb \
-        -maxdepth 2 \
-        -type f \
-        \( \
-            -name "cospar.txt" \
-            -o -name "command.txt" \
-            -o -name "eph_type.txt" \
-            -o -name "fo_options.txt" \
-            -o -name "*.ini" \
-            -o -name "*.cfg" \
-        \) \
-        -print
-fi
-
-echo "=== Locating cospar.txt ==="
-
-COSPAR_SOURCE=""
-
-if [ -f "/tmp/find_orb/cospar.txt" ]; then
-    COSPAR_SOURCE="/tmp/find_orb/cospar.txt"
-fi
-
-if [ -z "$COSPAR_SOURCE" ]; then
-    COSPAR_SOURCE="$(find /tmp/find_orb \
-        -type f \
-        -name "cospar.txt" \
-        -print -quit)"
-fi
-
-if [ -z "$COSPAR_SOURCE" ]; then
-    echo "ERROR: cospar.txt was not found."
-    echo "Find_Orb source tree:"
-    find /tmp/find_orb \
-        -maxdepth 3 \
-        -type f | head -100
-    exit 1
-fi
-
-echo "Found cospar.txt:"
-echo "$COSPAR_SOURCE"
-
-cp "$COSPAR_SOURCE" \
-   "$PROJECT_ROOT/backend/findorb-data/cospar.txt"
-
-echo "=== Locating additional Find_Orb configuration files ==="
-
-for FILE in \
-    command.txt \
-    eph_type.txt \
-    fo_options.txt \
-    classes.txt \
-    asteroid_classes.txt \
-    satellite_classes.txt
-do
-
-    SOURCE="$(find /tmp/find_orb \
-        -type f \
-        -name "$FILE" \
-        -print -quit)"
-
-    if [ -n "$SOURCE" ]; then
-
-        echo "Copying $FILE"
-
-        cp "$SOURCE" \
-           "$PROJECT_ROOT/backend/findorb-data/$FILE"
-
+    if [ -f "/tmp/find_orb/$filename" ]; then
+        echo "Copying $filename"
+        cp "/tmp/find_orb/$filename" \
+           "$PROJECT_ROOT/backend/findorb-data/$filename"
+        return 0
     fi
 
-done
+    local found
+    found="$(find /tmp/find_orb \
+        -type f \
+        -name "$filename" \
+        -print -quit)"
+
+    if [ -n "$found" ]; then
+        echo "Copying $filename from $found"
+        cp "$found" \
+           "$PROJECT_ROOT/backend/findorb-data/$filename"
+        return 0
+    fi
+
+    echo "WARNING: $filename was not found"
+    return 1
+}
+
+echo "=== Required configuration ==="
+
+copy_runtime_file "environ.def"
+copy_runtime_file "cospar.txt"
+
+echo "=== Observatory data ==="
+
+copy_runtime_file "ObsCodes.html" || \
+copy_runtime_file "ObsCodes.htm"
+
+copy_runtime_file "rovers.txt"
+
+echo "=== Additional Find_Orb configuration ==="
+
+copy_runtime_file "command.txt" || true
+copy_runtime_file "eph_type.txt" || true
+copy_runtime_file "fo_options.txt" || true
 
 echo "=== Installing DE430 planetary ephemeris ==="
 
@@ -165,6 +135,11 @@ fi
 
 if [ ! -x "$PROJECT_ROOT/backend/bin/fo" ]; then
     chmod +x "$PROJECT_ROOT/backend/bin/fo"
+fi
+
+if [ ! -f "$PROJECT_ROOT/backend/findorb-data/environ.def" ]; then
+    echo "ERROR: environ.def is missing."
+    exit 1
 fi
 
 if [ ! -f "$PROJECT_ROOT/backend/findorb-data/cospar.txt" ]; then
@@ -184,15 +159,23 @@ echo "========================================"
 
 echo ""
 echo "Executable:"
-ls -lh "$PROJECT_ROOT/backend/bin/fo"
+ls -lh \
+    "$PROJECT_ROOT/backend/bin/fo"
 
 echo ""
 echo "Runtime configuration:"
-ls -lh "$PROJECT_ROOT/backend/findorb-data"
+ls -lh \
+    "$PROJECT_ROOT/backend/findorb-data"
 
 echo ""
-echo "cospar.txt:"
-ls -lh "$PROJECT_ROOT/backend/findorb-data/cospar.txt"
+echo "Environment:"
+ls -lh \
+    "$PROJECT_ROOT/backend/findorb-data/environ.def"
+
+echo ""
+echo "COSPAR:"
+ls -lh \
+    "$PROJECT_ROOT/backend/findorb-data/cospar.txt"
 
 echo ""
 echo "DE430:"
