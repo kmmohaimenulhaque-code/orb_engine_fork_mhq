@@ -850,7 +850,7 @@ e=0.0
 
 #Currentvisualisersupports
 #ellipticorbitsonly.
-ifa<=0ore>=1:
+ifa<= 0 or e >=1:
 return[]
 
 points:list[list[float]]=[]
