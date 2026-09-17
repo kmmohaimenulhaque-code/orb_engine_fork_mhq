@@ -5,8 +5,10 @@ Space Apps 2026 MVP
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
+from pathlib import Path
 import traceback
 
 from models import (
@@ -42,9 +44,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve frontend static files (works on Render + local)
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
 
 @app.get("/")
 def root():
+    """Serve the 3D frontend when available, otherwise JSON status."""
+    index = FRONTEND_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
     return {
         "project": "NASA-Grade Interactive 3D Orbit Simulator",
         "status": "online",
@@ -52,6 +63,22 @@ def root():
         "time_utc": datetime.now(timezone.utc).isoformat(),
         "message": "Ready for Space Apps 2026 demo",
     }
+
+
+@app.get("/app.js")
+def serve_app_js():
+    f = FRONTEND_DIR / "app.js"
+    if f.exists():
+        return FileResponse(f, media_type="application/javascript")
+    raise HTTPException(404)
+
+
+@app.get("/style.css")
+def serve_style():
+    f = FRONTEND_DIR / "style.css"
+    if f.exists():
+        return FileResponse(f, media_type="text/css")
+    raise HTTPException(404)
 
 
 @app.get("/health")

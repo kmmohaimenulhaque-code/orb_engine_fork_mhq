@@ -1,7 +1,7 @@
 // NASA Orbit Simulator – Frontend
 // Space Apps 2026 MVP
 
-const API = "http://localhost:8000";
+const API = window.location.origin;
 
 // Cesium Ion token – for demo we use the default public token path.
 // For production get a free token at https://cesium.com/ion/
