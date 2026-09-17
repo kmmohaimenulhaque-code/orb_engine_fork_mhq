@@ -52,33 +52,75 @@ make clean
 make sat_id
 make install
 
-echo "=== Building find_orb ==="
+echo "=== Building Find_Orb ==="
 
 cd /tmp/find_orb
 make clean
 make
 
-echo "=== Installing Find_Orb executable ==="
+echo "=== Installing Find_Orb ==="
 
 mkdir -p "$PROJECT_ROOT/backend/bin"
+mkdir -p "$PROJECT_ROOT/backend/findorb-data"
 
-cp /tmp/find_orb/fo "$PROJECT_ROOT/backend/bin/fo"
+echo "=== Installing Find_Orb executable and data files ==="
 
-chmod +x "$PROJECT_ROOT/backend/bin/fo"
+make PREFIX="$PROJECT_ROOT/backend" install
+
+echo "=== Copying Find_Orb configuration data ==="
+
+if [ ! -d "$PROJECT_ROOT/backend/share/findorb/data" ]; then
+    echo "ERROR: Find_Orb data directory was not created."
+    exit 1
+fi
+
+cp -a \
+    "$PROJECT_ROOT/backend/share/findorb/data/." \
+    "$PROJECT_ROOT/backend/findorb-data/"
 
 echo "=== Installing DE430 planetary ephemeris ==="
 
-mkdir -p "$HOME/.find_orb"
+wget -O \
+    "$PROJECT_ROOT/backend/findorb-data/linux_p1550p2650.430t" \
+    ftp://ssd.jpl.nasa.gov/pub/eph/planets/Linux/de430t/linux_p1550p2650.430t
 
-if [ ! -f "$HOME/.find_orb/linux_p1550p2650.430t" ]; then
-    wget -O "$HOME/.find_orb/linux_p1550p2650.430t" \
-        ftp://ssd.jpl.nasa.gov/pub/eph/planets/Linux/de430t/linux_p1550p2650.430t
+echo "=== Verifying Find_Orb runtime files ==="
+
+if [ ! -f "$PROJECT_ROOT/backend/bin/fo" ]; then
+    echo "ERROR: Find_Orb executable was not installed."
+    exit 1
 fi
 
+if [ ! -x "$PROJECT_ROOT/backend/bin/fo" ]; then
+    chmod +x "$PROJECT_ROOT/backend/bin/fo"
+fi
+
+if [ ! -f "$PROJECT_ROOT/backend/findorb-data/cospar.txt" ]; then
+    echo "ERROR: cospar.txt was not installed."
+    echo "Find_Orb configuration is incomplete."
+    exit 1
+fi
+
+echo "Find_Orb executable:"
+ls -lh "$PROJECT_ROOT/backend/bin/fo"
+
+echo "Find_Orb configuration:"
+echo "$PROJECT_ROOT/backend/findorb-data"
+
+echo "Checking cospar.txt:"
+ls -lh "$PROJECT_ROOT/backend/findorb-data/cospar.txt"
+
 echo "========================================"
-echo " Find_Orb successfully built!"
+echo " Find_Orb successfully installed!"
 echo " Executable:"
 echo " $PROJECT_ROOT/backend/bin/fo"
+echo ""
+echo " Configuration:"
+echo " $PROJECT_ROOT/backend/findorb-data"
 echo "========================================"
 
-"$PROJECT_ROOT/backend/bin/fo" || true
+echo "=== Find_Orb configuration files ==="
+
+ls -lh "$PROJECT_ROOT/backend/findorb-data" | head -40
+
+echo "=== Build complete ==="
