@@ -9,6 +9,11 @@ echo " Orbit Intelligence — Find_Orb Build"
 echo " Project root: $PROJECT_ROOT"
 echo "========================================"
 
+export CPPFLAGS="-I$HOME/include"
+export CFLAGS="-I$HOME/include"
+export CXXFLAGS="-I$HOME/include"
+export LDFLAGS="-L$HOME/lib"
+
 cd /tmp
 
 rm -rf lunar jpl_eph sat_code miscell find_orb
