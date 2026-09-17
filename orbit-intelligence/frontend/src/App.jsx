@@ -8,42 +8,47 @@ const API_BASE =
   "http://127.0.0.1:8000";
 
 
+// Multi-day arc. A 18-hour arc is too short for a reliable
+// elliptical solution from Find_Orb and often fails or
+// produces near-parabolic / high-uncertainty elements.
 const SAMPLE_OBSERVATIONS = [
   {
-    time_utc: "2026-09-10T00:00:00Z",
-    ra_deg: 151.2345,
-    dec_deg: 12.3456,
+    time_utc: "2026-09-05T02:15:00Z",
+    ra_deg: 148.4123,
+    dec_deg: 11.2341,
+    magnitude: 18.4,
+  },
+  {
+    time_utc: "2026-09-06T04:40:00Z",
+    ra_deg: 149.1056,
+    dec_deg: 11.4872,
+    magnitude: 18.3,
+  },
+  {
+    time_utc: "2026-09-07T07:05:00Z",
+    ra_deg: 149.8124,
+    dec_deg: 11.7518,
     magnitude: 18.2,
   },
   {
-    time_utc: "2026-09-10T06:00:00Z",
-    ra_deg: 151.6821,
-    dec_deg: 12.5124,
+    time_utc: "2026-09-08T09:30:00Z",
+    ra_deg: 150.5341,
+    dec_deg: 12.0285,
     magnitude: 18.1,
   },
   {
-    time_utc: "2026-09-10T12:00:00Z",
-    ra_deg: 152.1317,
-    dec_deg: 12.6912,
+    time_utc: "2026-09-09T11:55:00Z",
+    ra_deg: 151.2718,
+    dec_deg: 12.3174,
     magnitude: 18.2,
   },
   {
-    time_utc: "2026-09-10T18:00:00Z",
-    ra_deg: 152.5814,
-    dec_deg: 12.8715,
+    time_utc: "2026-09-10T14:20:00Z",
+    ra_deg: 152.0253,
+    dec_deg: 12.6186,
     magnitude: 18.3,
   },
 ];
-
-
-function emptyObservation() {
-  return {
-    time_utc: "2026-09-10T00:00:00Z",
-    ra_deg: 150,
-    dec_deg: 10,
-    magnitude: 18,
-  };
-}
 
 
 function formatNumber(value, digits = 4) {
@@ -56,6 +61,39 @@ function formatNumber(value, digits = 4) {
   }
 
   return Number(value).toFixed(digits);
+}
+
+
+function formatErrorDetail(detail) {
+  if (!detail) {
+    return "Orbit determination failed.";
+  }
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+
+        if (item && typeof item === "object") {
+          return item.msg || JSON.stringify(item);
+        }
+
+        return String(item);
+      })
+      .join("\n");
+  }
+
+  if (typeof detail === "object") {
+    return detail.msg || JSON.stringify(detail);
+  }
+
+  return String(detail);
 }
 
 
@@ -84,7 +122,6 @@ function Metric({
 
 
 export default function App() {
-
   const [objectName, setObjectName] =
     useState("MHA-TEST");
 
@@ -100,20 +137,16 @@ export default function App() {
   const [error, setError] =
     useState("");
 
-
   const elements =
     result?.elements || {};
-
 
   const updateObservation = (
     index,
     field,
     value
   ) => {
-
     setObservations((current) =>
       current.map((observation, i) => {
-
         if (i !== index) {
           return observation;
         }
@@ -129,13 +162,9 @@ export default function App() {
     );
   };
 
-
   const addObservation = () => {
-
     const previous =
-      observations[
-        observations.length - 1
-      ];
+      observations[observations.length - 1];
 
     setObservations([
       ...observations,
@@ -146,95 +175,76 @@ export default function App() {
     ]);
   };
 
-
   const removeObservation = (index) => {
-
     if (observations.length <= 3) {
       return;
     }
 
     setObservations(
-      observations.filter(
-        (_, i) => i !== index
-      )
+      observations.filter((_, i) => i !== index)
     );
   };
 
-
   const loadDemo = () => {
     setObjectName("MHA-TEST");
-
-    setObservations(
-      SAMPLE_OBSERVATIONS
-    );
-
+    setObservations(SAMPLE_OBSERVATIONS);
     setResult(null);
     setError("");
   };
 
-
   const solve = async () => {
-
     setLoading(true);
     setError("");
     setResult(null);
 
     try {
+      const response = await fetch(
+        `${API_BASE}/api/orbit/solve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            object_name: objectName,
+            observations,
+          }),
+        }
+      );
 
-      const response =
-        await fetch(
-          `${API_BASE}/api/orbit/solve`,
-          {
-            method: "POST",
+      let data;
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              object_name:
-                objectName,
-
-              observations,
-            }),
-          }
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          `Backend returned non-JSON response (HTTP ${response.status}). ` +
+          "Is the API running and is VITE_API_BASE_URL correct?"
         );
-
-      const data =
-        await response.json();
+      }
 
       if (!response.ok) {
         throw new Error(
-          data.detail ||
-          "Orbit determination failed."
+          formatErrorDetail(data.detail) ||
+          `Orbit determination failed (HTTP ${response.status}).`
         );
       }
 
       setResult(data);
-
     } catch (err) {
-
       setError(
         err.message ||
-        "Could not connect to the backend."
+        "Could not connect to the backend. Check that the API is running and CORS is allowed."
       );
-
     } finally {
-
       setLoading(false);
     }
   };
 
-
   const orbitReady =
-    Boolean(
-      result?.orbit_path_au?.length
-    );
-
+    Boolean(result?.orbit_path_au?.length);
 
   const statusText = useMemo(() => {
-
     if (loading) {
       return "SOLVING ORBIT";
     }
@@ -244,17 +254,12 @@ export default function App() {
     }
 
     return "AWAITING OBSERVATIONS";
-
   }, [loading, orbitReady]);
-
 
   return (
     <div className="app">
-
       <header className="topbar">
-
         <div>
-
           <div className="eyebrow">
             ORBITAL INTELLIGENCE
           </div>
@@ -266,25 +271,18 @@ export default function App() {
               TRAJECTORY LAB
             </span>
           </h1>
-
         </div>
 
         <div className="status-pill">
           <span className="status-dot" />
           {statusText}
         </div>
-
       </header>
 
-
       <main className="layout">
-
         <section className="control-panel">
-
           <div className="panel-header">
-
             <div>
-
               <div className="section-kicker">
                 OBSERVATION INPUT
               </div>
@@ -292,18 +290,16 @@ export default function App() {
               <h2>
                 Astrometric observations
               </h2>
-
             </div>
 
             <button
               className="ghost-button"
               onClick={loadDemo}
+              type="button"
             >
               LOAD DEMO
             </button>
-
           </div>
-
 
           <label className="field-label">
             OBJECT DESIGNATION
@@ -311,21 +307,15 @@ export default function App() {
             <input
               value={objectName}
               onChange={(event) =>
-                setObjectName(
-                  event.target.value
-                )
+                setObjectName(event.target.value)
               }
               placeholder="2026 AB"
             />
           </label>
 
-
           <div className="table-wrap">
-
             <table>
-
               <thead>
-
                 <tr>
                   <th>UTC</th>
                   <th>RA °</th>
@@ -333,22 +323,16 @@ export default function App() {
                   <th>MAG</th>
                   <th />
                 </tr>
-
               </thead>
 
               <tbody>
-
                 {observations.map(
                   (observation, index) => (
-
                     <tr key={index}>
-
                       <td>
                         <input
                           className="table-input time-input"
-                          value={
-                            observation.time_utc
-                          }
+                          value={observation.time_utc}
                           onChange={(event) =>
                             updateObservation(
                               index,
@@ -364,9 +348,7 @@ export default function App() {
                           className="table-input"
                           type="number"
                           step="0.0001"
-                          value={
-                            observation.ra_deg
-                          }
+                          value={observation.ra_deg}
                           onChange={(event) =>
                             updateObservation(
                               index,
@@ -382,9 +364,7 @@ export default function App() {
                           className="table-input"
                           type="number"
                           step="0.0001"
-                          value={
-                            observation.dec_deg
-                          }
+                          value={observation.dec_deg}
                           onChange={(event) =>
                             updateObservation(
                               index,
@@ -400,9 +380,7 @@ export default function App() {
                           className="table-input"
                           type="number"
                           step="0.1"
-                          value={
-                            observation.magnitude
-                          }
+                          value={observation.magnitude}
                           onChange={(event) =>
                             updateObservation(
                               index,
@@ -414,37 +392,28 @@ export default function App() {
                       </td>
 
                       <td>
-
                         <button
                           className="remove-button"
                           onClick={() =>
-                            removeObservation(
-                              index
-                            )
+                            removeObservation(index)
                           }
+                          type="button"
                         >
                           ×
                         </button>
-
                       </td>
-
                     </tr>
-
                   )
                 )}
-
               </tbody>
-
             </table>
-
           </div>
 
-
           <div className="control-actions">
-
             <button
               className="secondary-button"
               onClick={addObservation}
+              type="button"
             >
               + ADD OBSERVATION
             </button>
@@ -453,34 +422,27 @@ export default function App() {
               className="solve-button"
               onClick={solve}
               disabled={loading}
+              type="button"
             >
               {loading
                 ? "RUNNING FIND_ORB..."
                 : "DETERMINE ORBIT →"}
             </button>
-
           </div>
 
-
           {error && (
-
             <div className="error-box">
-
               <strong>
                 ORBIT SOLVER ERROR
               </strong>
 
-              <span>
+              <span className="error-detail">
                 {error}
               </span>
-
             </div>
-
           )}
 
-
           <div className="info-box">
-
             <strong>
               ENGINE
             </strong>
@@ -488,21 +450,16 @@ export default function App() {
             <p>
               Observations are passed to the
               non-interactive Find_Orb engine.
-              The backend does not independently
-              invent an orbital solution.
+              The backend does not invent an
+              orbital solution. A multi-day arc
+              is required for a reliable fit.
             </p>
-
           </div>
-
         </section>
 
-
         <section className="visual-panel">
-
           <div className="viewer-header">
-
             <div>
-
               <div className="section-kicker">
                 TRAJECTORY VISUALISATION
               </div>
@@ -510,7 +467,6 @@ export default function App() {
               <h2>
                 Heliocentric orbit
               </h2>
-
             </div>
 
             {result && (
@@ -518,12 +474,9 @@ export default function App() {
                 FIND_ORB
               </div>
             )}
-
           </div>
 
-
           <div className="viewer">
-
             <OrbitViewer
               orbitPath={
                 result?.orbit_path_au || []
@@ -531,9 +484,7 @@ export default function App() {
             />
 
             {!orbitReady && !loading && (
-
               <div className="viewer-empty">
-
                 <div className="crosshair">
                   +
                 </div>
@@ -546,102 +497,68 @@ export default function App() {
                   The fitted trajectory will
                   appear here.
                 </small>
-
               </div>
-
             )}
 
             {loading && (
-
               <div className="viewer-loading">
-
                 <div className="loader" />
 
                 <span>
                   FIND_ORB IS FITTING
                   OBSERVATIONS
                 </span>
-
               </div>
-
             )}
-
           </div>
 
-
           <div className="metrics">
-
             <Metric
               label="SEMI-MAJOR AXIS"
-              value={
-                formatNumber(
-                  elements.a
-                )
-              }
+              value={formatNumber(elements.a)}
               unit="AU"
             />
 
             <Metric
               label="ECCENTRICITY"
-              value={
-                formatNumber(
-                  elements.e,
-                  5
-                )
-              }
+              value={formatNumber(elements.e, 5)}
             />
 
             <Metric
               label="INCLINATION"
-              value={
-                formatNumber(
-                  elements.i,
-                  3
-                )
-              }
+              value={formatNumber(elements.i, 3)}
               unit="°"
             />
 
             <Metric
               label="PERIHELION"
-              value={
-                formatNumber(
-                  elements.perihelion_au
-                )
-              }
+              value={formatNumber(
+                elements.perihelion_au
+              )}
               unit="AU"
             />
 
             <Metric
               label="APHELION"
-              value={
-                formatNumber(
-                  elements.aphelion_au
-                )
-              }
+              value={formatNumber(
+                elements.aphelion_au
+              )}
               unit="AU"
             />
 
             <Metric
               label="ORBITAL PERIOD"
-              value={
-                formatNumber(
-                  elements.period_years,
-                  3
-                )
-              }
+              value={formatNumber(
+                elements.period_years,
+                3
+              )}
               unit="yr"
             />
-
           </div>
-
         </section>
-
       </main>
 
-
       <footer>
-
         <span>
           ORBIT INTELLIGENCE v0.1
         </span>
@@ -650,9 +567,7 @@ export default function App() {
           ASTROMETRY → ORBIT DETERMINATION
           → TRAJECTORY
         </span>
-
       </footer>
-
     </div>
   );
 }

@@ -400,7 +400,8 @@ td {
 
 
 .info-box p,
-.error-box span {
+.error-box span,
+.error-detail {
   margin: 0;
 
   color: #6d7b91;
@@ -408,6 +409,9 @@ td {
   font-size: 11px;
 
   line-height: 1.55;
+
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 
@@ -421,7 +425,8 @@ td {
 }
 
 
-.error-box span {
+.error-box span,
+.error-detail {
   color: #b98c92;
 }
 
