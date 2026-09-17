@@ -24,26 +24,33 @@ git clone --depth 1 https://github.com/Bill-Gray/find_orb.git
 echo "=== Building lunar ==="
 
 cd /tmp/lunar
+make clean
 make
 make install
-make integrat
 
 echo "=== Building jpl_eph ==="
 
 cd /tmp/jpl_eph
-make
+make clean
 make libjpl.a
 make install
+
+echo "=== Building lunar integration tools ==="
+
+cd /tmp/lunar
+make integrat
 
 echo "=== Building sat_code ==="
 
 cd /tmp/sat_code
+make clean
 make sat_id
 make install
 
 echo "=== Building find_orb ==="
 
 cd /tmp/find_orb
+make clean
 make
 
 echo "=== Installing Find_Orb executable ==="
