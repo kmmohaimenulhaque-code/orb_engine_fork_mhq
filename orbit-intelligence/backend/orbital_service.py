@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -13,85 +14,80 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent
 
 FO_BINARY = BASE_DIR / "bin" / "fo"
-
 FO_CONFIG_DIR = BASE_DIR / "findorb-data"
 
+ENVIRON_DEF = FO_CONFIG_DIR / "environ.def"
+COSPAR_FILE = FO_CONFIG_DIR / "cospar.txt"
+DE430_FILE = FO_CONFIG_DIR / "linux_p1550p2650.430t"
 
-# Gaussian gravitational constant.
-# AU^(3/2)/day.
 GAUSSIAN_K = 0.01720209895
 
 
 def _require_find_orb() -> None:
     """
-    Verify that the Find_Orb executable and its runtime
-    configuration are available.
-
-    These artifacts are produced only by the deploy-time
-    script orbit-intelligence/render-build.sh. They are
-    intentionally NOT committed to the repository because
-    the binary is platform-specific and the DE430 ephemeris
-    is large.
+    Verify that Find_Orb and its runtime data were installed
+    by render-build.sh.
     """
 
     if not FO_BINARY.exists():
         raise RuntimeError(
-            f"Find_Orb executable not found at {FO_BINARY}.\n"
-            "The deploy build (render-build.sh) must compile and install 'fo'.\n"
-            "See orbit-intelligence/README.md for the required build steps."
+            f"Find_Orb executable not found: {FO_BINARY}"
+        )
+
+    if not FO_BINARY.is_file():
+        raise RuntimeError(
+            f"Find_Orb path is not a file: {FO_BINARY}"
         )
 
     try:
         size = FO_BINARY.stat().st_size
     except OSError as exc:
         raise RuntimeError(
-            f"Cannot stat Find_Orb binary at {FO_BINARY}: {exc}"
+            f"Cannot inspect Find_Orb executable: {exc}"
         ) from exc
 
     if size < 1024:
         raise RuntimeError(
-            f"Find_Orb binary at {FO_BINARY} is only {size} bytes.\n"
-            "This is almost certainly an empty placeholder, not a real executable.\n"
-            "Run orbit-intelligence/render-build.sh (or the equivalent deploy step)\n"
-            "so that a properly compiled 'fo' is installed."
+            f"Find_Orb executable is suspiciously small: "
+            f"{size} bytes"
         )
 
     if not os.access(FO_BINARY, os.X_OK):
         raise RuntimeError(
-            f"Find_Orb exists but is not executable: {FO_BINARY}\n"
-            "Try: chmod +x " + str(FO_BINARY)
+            f"Find_Orb executable is not executable: {FO_BINARY}"
         )
 
     if not FO_CONFIG_DIR.exists():
         raise RuntimeError(
-            f"Find_Orb configuration directory not found at {FO_CONFIG_DIR}.\n"
-            "render-build.sh is responsible for creating this directory and\n"
-            "populating it with cospar.txt + the DE430 ephemeris."
+            f"Find_Orb configuration directory is missing: "
+            f"{FO_CONFIG_DIR}"
         )
 
-    cospar_file = FO_CONFIG_DIR / "cospar.txt"
-
-    if not cospar_file.exists():
+    if not ENVIRON_DEF.exists():
         raise RuntimeError(
-            "Find_Orb configuration is incomplete.\n"
-            f"Missing required file: {cospar_file}\n"
-            "This file is copied by render-build.sh from the Find_Orb source tree."
+            f"Find_Orb environment file is missing: "
+            f"{ENVIRON_DEF}"
         )
 
-    eph_candidates = list(FO_CONFIG_DIR.glob("*.430*")) + list(
-        FO_CONFIG_DIR.glob("linux_p*.430*")
-    )
+    if not COSPAR_FILE.exists():
+        raise RuntimeError(
+            f"Find_Orb COSPAR file is missing: "
+            f"{COSPAR_FILE}"
+        )
 
-    if not eph_candidates:
-        pass
+    if not DE430_FILE.exists():
+        raise RuntimeError(
+            f"Find_Orb DE430 ephemeris is missing: "
+            f"{DE430_FILE}"
+        )
 
 
 def _decimal_to_ra(
     ra_deg: float,
 ) -> tuple[int, int, float]:
     """
-    Convert decimal-degree right ascension into
-    hours, minutes, seconds.
+    Convert right ascension from decimal degrees
+    to hours, minutes and seconds.
     """
 
     total_hours = ra_deg / 15.0
@@ -108,18 +104,32 @@ def _decimal_to_ra(
         minutes_total - minutes
     ) * 60.0
 
-    return hours, minutes, seconds
+    if seconds >= 59.9995:
+        seconds = 0.0
+        minutes += 1
+
+    if minutes >= 60:
+        minutes = 0
+        hours += 1
+
+    hours %= 24
+
+    return (
+        hours,
+        minutes,
+        seconds,
+    )
 
 
 def _decimal_to_dec(
     dec_deg: float,
 ) -> tuple[str, int, int, float]:
     """
-    Convert decimal-degree declination into
-    sign, degrees, arcminutes, arcseconds.
+    Convert declination from decimal degrees
+    to sign, degrees, arcminutes and arcseconds.
     """
 
-    sign = "+" if dec_deg >= 0 else "-"
+    sign = "+" if dec_deg >= 0.0 else "-"
 
     value = abs(dec_deg)
 
@@ -135,6 +145,14 @@ def _decimal_to_dec(
         minutes_total - minutes
     ) * 60.0
 
+    if seconds >= 59.95:
+        seconds = 0.0
+        minutes += 1
+
+    if minutes >= 60:
+        minutes = 0
+        degrees += 1
+
     return (
         sign,
         degrees,
@@ -147,24 +165,31 @@ def _format_mpc_date(
     time_utc: str,
 ) -> str:
     """
-    Convert an ISO-ish UTC timestamp to MPC-style:
-
-    YYYYMMDD.dddddd
+    Convert an ISO UTC timestamp into MPC-style
+    year/month/day fractional date.
 
     Example:
 
-    2026-09-17T12:30:00Z
+        2026-09-17T12:30:00Z
 
-    becomes approximately:
+    becomes:
 
-    20260917.520833
+        2026 09 17.520833
     """
 
     value = (
         time_utc
         .strip()
-        .replace("Z", "")
     )
+
+    if value.endswith("Z"):
+        value = value[:-1]
+
+    if "+" in value:
+        value = value.split(
+            "+",
+            1,
+        )[0]
 
     if "T" not in value:
         raise ValueError(
@@ -176,32 +201,37 @@ def _format_mpc_date(
         1,
     )
 
+    date_parts = date_part.split("-")
+
+    if len(date_parts) != 3:
+        raise ValueError(
+            f"Invalid UTC date: {time_utc}"
+        )
+
     try:
-        year, month, day = [
-            int(x)
-            for x in date_part.split("-")
-        ]
+        year = int(date_parts[0])
+        month = int(date_parts[1])
+        day = int(date_parts[2])
     except ValueError as exc:
         raise ValueError(
             f"Invalid UTC date: {time_utc}"
         ) from exc
 
-    time_part = (
-        time_part
-        .split("+")[0]
-        .split("-")[0]
-    )
+    time_parts = time_part.split(":")
 
-    parts = time_part.split(":")
-
-    if len(parts) != 3:
+    if len(time_parts) != 3:
         raise ValueError(
             f"Invalid UTC time: {time_utc}"
         )
 
-    hour = int(parts[0])
-    minute = int(parts[1])
-    second = float(parts[2])
+    try:
+        hour = int(time_parts[0])
+        minute = int(time_parts[1])
+        second = float(time_parts[2])
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid UTC time: {time_utc}"
+        ) from exc
 
     if not 0 <= hour <= 23:
         raise ValueError(
@@ -213,7 +243,7 @@ def _format_mpc_date(
             f"Invalid UTC minute: {time_utc}"
         )
 
-    if not 0 <= second < 60:
+    if not 0.0 <= second < 60.0:
         raise ValueError(
             f"Invalid UTC second: {time_utc}"
         )
@@ -225,8 +255,8 @@ def _format_mpc_date(
     )
 
     return (
-        f"{year:04d}"
-        f"{month:02d}"
+        f"{year:04d} "
+        f"{month:02d} "
         f"{day + day_fraction:09.6f}"
     )
 
@@ -239,11 +269,9 @@ def _format_observation(
     magnitude: float | None,
 ) -> str:
     """
-    Format an observation as an MPC-style
-    optical observation line.
+    Create an MPC 80-column optical observation.
 
-    The current simulator uses synthetic
-    geocentric observatory code 500.
+    Observatory code 500 is the geocenter.
     """
 
     (
@@ -267,28 +295,63 @@ def _format_observation(
         time_utc
     )
 
-    if magnitude is not None:
-        mag = f"{magnitude:4.1f}"
-    else:
-        mag = ""
-
     line = (
         f"{object_name[:12]:<12}"
         f"C"
         f"{date_string:>17}"
-        f"{ra_h:02d}"
-        f"{ra_m:02d}"
+        f" "
+        f"{ra_h:02d} "
+        f"{ra_m:02d} "
         f"{ra_s:05.2f}"
+        f" "
         f"{dec_sign}"
-        f"{dec_d:02d}"
-        f"{dec_m:02d}"
+        f"{dec_d:02d} "
+        f"{dec_m:02d} "
         f"{dec_s:04.1f}"
-        f""
-        f"{mag}"
-        f"500"
     )
 
+    if magnitude is not None:
+        line += (
+            f"     "
+            f"{magnitude:4.1f}"
+        )
+    else:
+        line += "         "
+
+    line += "     500"
+
     return line[:80]
+
+
+def _prepare_runtime_home(
+    output_dir: Path,
+) -> Path:
+    """
+    Create a temporary HOME for Find_Orb.
+
+    Find_Orb stores its mutable environment settings
+    separately from the immutable packaged defaults.
+
+    We copy environ.def into the temporary HOME so that
+    the default-environment lookup always has a valid file.
+    """
+
+    home_dir = (
+        output_dir
+        / "findorb-home"
+    )
+
+    home_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    shutil.copy2(
+        ENVIRON_DEF,
+        home_dir / "environ.def",
+    )
+
+    return home_dir
 
 
 def _run_find_orb(
@@ -296,55 +359,28 @@ def _run_find_orb(
     output_dir: Path,
 ) -> str:
     """
-    Run the non-interactive Find_Orb executable.
+    Execute the non-interactive Find_Orb program.
 
-    Find_Orb requires its configuration files,
-    including cospar.txt.
+    Important Find_Orb switches:
 
-    IMPORTANT:
-    Find_Orb's -x alternate configuration directory
-    is concatenated internally with filenames. Therefore
-    the directory MUST end with a path separator.
+        -x <directory>
+            alternate configuration directory
 
-    Example:
+        -D <file>
+            explicit environment file
 
-    /app/findorb-data/
+        -q
+            quiet processing
 
-    rather than:
+        -O <directory>
+            output directory
 
-    /app/findorb-data
+    We deliberately do NOT use '-v' because Find_Orb uses
+    '-v' for state-vector input.
     """
 
-    if not FO_CONFIG_DIR.exists():
-        raise RuntimeError(
-            "Find_Orb configuration directory "
-            f"does not exist: {FO_CONFIG_DIR}"
-        )
+    _require_find_orb()
 
-    cospar_file = (
-        FO_CONFIG_DIR / "cospar.txt"
-    )
-
-    if not cospar_file.exists():
-        raise RuntimeError(
-            "Find_Orb configuration is missing "
-            f"cospar.txt: {cospar_file}"
-        )
-
-    # Find_Orb concatenates the -x directory directly
-    # with configuration filenames such as "cospar.txt".
-    #
-    # Therefore:
-    #
-    # /findorb-data/ + cospar.txt
-    #
-    # must become:
-    #
-    # /findorb-data/cospar.txt
-    #
-    # and NOT:
-    #
-    # /findorb-datacospar.txt
     config_dir_argument = str(
         FO_CONFIG_DIR
     )
@@ -354,19 +390,41 @@ def _run_find_orb(
     ):
         config_dir_argument += os.sep
 
+    runtime_home = _prepare_runtime_home(
+        output_dir
+    )
+
+    runtime_environment_file = (
+        runtime_home
+        / "environ.def"
+    )
+
     command = [
         str(FO_BINARY),
+
         "-x",
         config_dir_argument,
+
+        "-D",
+        str(runtime_environment_file),
+
+        "-O",
+        str(output_dir),
+
+        "-q",
+
         str(input_file),
-        "-v",
     ]
 
     env = os.environ.copy()
 
-    # Keep Find_Orb temporary files isolated
-    # from the packaged configuration directory.
-    env["HOME"] = str(output_dir)
+    env["HOME"] = str(
+        runtime_home
+    )
+
+    env["FIND_ORB_HOME"] = str(
+        runtime_home
+    )
 
     try:
         process = subprocess.run(
@@ -375,13 +433,12 @@ def _run_find_orb(
             env=env,
             capture_output=True,
             text=True,
-            timeout=45,
+            timeout=60,
         )
 
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
-            "Find_Orb exceeded the "
-            "45-second execution limit."
+            "Find_Orb exceeded the 60-second execution limit."
         ) from exc
 
     except OSError as exc:
@@ -389,16 +446,19 @@ def _run_find_orb(
             f"Could not execute Find_Orb: {exc}"
         ) from exc
 
+    stdout = process.stdout or ""
+    stderr = process.stderr or ""
+
     combined_output = (
-        process.stdout
+        stdout
         + "\n"
-        + process.stderr
+        + stderr
     )
 
     if process.returncode != 0:
         raise RuntimeError(
             "Find_Orb failed.\n\n"
-            + combined_output[-5000:]
+            + combined_output[-8000:]
         )
 
     return combined_output
@@ -408,63 +468,119 @@ def _find_json_files(
     directory: Path,
 ) -> list[Path]:
     """
-    Find JSON products generated by Find_Orb.
+    Locate JSON files produced by Find_Orb.
     """
 
-    return list(
-        directory.rglob("*.json")
+    return sorted(
+        directory.rglob("*.json"),
+        key=lambda path: path.stat().st_mtime
+        if path.exists()
+        else 0.0,
+        reverse=True,
     )
+
+
+def _load_json_file(
+    path: Path,
+) -> dict[str, Any] | None:
+    """
+    Load a JSON object safely.
+    """
+
+    try:
+        with path.open(
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return None
+
+    if isinstance(
+        data,
+        dict,
+    ):
+        return data
+
+    return None
 
 
 def _load_best_find_orb_json(
     directory: Path,
 ) -> dict[str, Any]:
     """
-    Load the most likely Find_Orb orbital
-    solution JSON file.
+    Load the best available Find_Orb JSON result.
+
+    The non-interactive Find_Orb executable creates
+    total.json and per-object element JSON products.
     """
 
-    candidates = _find_json_files(
-        directory
-    )
-
-    preferred = [
-        path
-        for path in candidates
-        if path.name.lower()
-        in {
-            "total.json",
-            "elements.json",
-            "short.json",
-            "elem_short.json",
-        }
-    ]
-
     candidates = (
-        preferred
-        or candidates
+        _find_json_files(
+            directory
+        )
     )
 
-    for path in candidates:
-        try:
-            with path.open(
-                "r",
-                encoding="utf-8",
-            ) as file:
-                data = json.load(file)
+    if not candidates:
+        raise RuntimeError(
+            "Find_Orb completed but produced no JSON files."
+        )
 
-            if isinstance(data, dict):
-                return data
+    preferred_names = (
+        "elements.json",
+        "total.json",
+    )
 
-        except (
-            OSError,
-            json.JSONDecodeError,
-        ):
-            continue
+    ordered: list[Path] = []
+
+    for preferred_name in preferred_names:
+        for candidate in candidates:
+            if (
+                candidate.name.lower()
+                == preferred_name
+            ):
+                ordered.append(
+                    candidate
+                )
+
+    for candidate in candidates:
+        if candidate not in ordered:
+            ordered.append(
+                candidate
+            )
+
+    for candidate in ordered:
+
+        data = _load_json_file(
+            candidate
+        )
+
+        if data is not None:
+            return data
 
     raise RuntimeError(
-        "Find_Orb completed but no readable "
-        "JSON result was produced."
+        "Find_Orb produced JSON files, "
+        "but none could be parsed."
+    )
+
+
+def _normalise_key(
+    key: Any,
+) -> str:
+    """
+    Normalise a JSON key for flexible matching.
+    """
+
+    return (
+        str(key)
+        .lower()
+        .replace("_", "")
+        .replace("-", "")
+        .replace(" ", "")
     )
 
 
@@ -473,23 +589,20 @@ def _recursive_find_key(
     keys: set[str],
 ) -> Any | None:
     """
-    Recursively search nested JSON data
-    for one of the requested keys.
+    Recursively find the first matching JSON key.
     """
 
-    if isinstance(value, dict):
+    if isinstance(
+        value,
+        dict,
+    ):
 
         for key, child in value.items():
 
-            normalized = (
-                str(key)
-                .lower()
-                .replace("_", "")
-                .replace("-", "")
-                .replace(" ", "")
-            )
-
-            if normalized in keys:
+            if (
+                _normalise_key(key)
+                in keys
+            ):
                 return child
 
         for child in value.values():
@@ -502,7 +615,10 @@ def _recursive_find_key(
             if result is not None:
                 return result
 
-    elif isinstance(value, list):
+    elif isinstance(
+        value,
+        list,
+    ):
 
         for child in value:
 
@@ -521,14 +637,16 @@ def _number(
     value: Any,
 ) -> float | None:
     """
-    Convert a JSON value into a float
-    when possible.
+    Convert a JSON value into a floating-point number.
     """
 
     if value is None:
         return None
 
-    if isinstance(value, bool):
+    if isinstance(
+        value,
+        bool,
+    ):
         return None
 
     if isinstance(
@@ -537,7 +655,10 @@ def _number(
     ):
         return float(value)
 
-    if isinstance(value, str):
+    if isinstance(
+        value,
+        str,
+    ):
 
         match = re.search(
             r"[-+]?(?:"
@@ -555,9 +676,8 @@ def _number(
                 return float(
                     match.group(0)
                 )
-
             except ValueError:
-                pass
+                return None
 
     return None
 
@@ -566,14 +686,13 @@ def _extract_elements(
     data: dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Extract common orbital elements from
-    Find_Orb JSON output.
+    Extract common orbital elements from Find_Orb JSON.
 
-    The parser intentionally searches recursively
-    because Find_Orb JSON layouts can change.
+    The parser supports multiple possible JSON key names.
     """
 
-    aliases = {
+    aliases: dict[str, set[str]] = {
+
         "a": {
             "a",
             "semimajoraxis",
@@ -591,13 +710,6 @@ def _extract_elements(
             "inclinationdeg",
         },
 
-        "q": {
-            "q",
-            "perihelion",
-            "periheliondistance",
-            "periheliondistanceau",
-        },
-
         "om": {
             "om",
             "omega",
@@ -606,17 +718,23 @@ def _extract_elements(
         },
 
         "node": {
-            "omnode",
-            "longitudeofascendingnode",
-            "ascendingnode",
             "node",
-            "nodeangle",
+            "ascendingnode",
+            "longitudeofascendingnode",
+            "longitudeofascendingnodedeg",
         },
 
         "M": {
             "m",
             "meananomaly",
             "meananomalydeg",
+        },
+
+        "q": {
+            "q",
+            "perihelion",
+            "periheliondistance",
+            "periheliondistanceau",
         },
 
         "tp": {
@@ -644,20 +762,14 @@ def _extract_elements(
 
     for output_key, keyset in aliases.items():
 
-        normalized_keyset = {
-            key.lower()
-            .replace("_", "")
-            .replace("-", "")
-            .replace(" ", "")
-            for key in keyset
-        }
-
         raw = _recursive_find_key(
             data,
-            normalized_keyset,
+            keyset,
         )
 
-        value = _number(raw)
+        value = _number(
+            raw
+        )
 
         if value is not None:
             result[output_key] = value
@@ -675,36 +787,40 @@ def _derive_elements(
     a = elements.get("a")
     e = elements.get("e")
 
-    if a is not None:
+    if (
+        a is not None
+        and e is not None
+    ):
 
-        if e is not None:
+        elements.setdefault(
+            "perihelion_au",
+            a * (1.0 - e),
+        )
 
-            elements.setdefault(
-                "perihelion_au",
-                a * (1.0 - e),
-            )
+        elements.setdefault(
+            "aphelion_au",
+            a * (1.0 + e),
+        )
 
-            elements.setdefault(
-                "aphelion_au",
-                a * (1.0 + e),
-            )
+    if (
+        a is not None
+        and a > 0.0
+    ):
 
-        if a > 0:
+        period_years = math.sqrt(
+            a ** 3
+        )
 
-            period_years = math.sqrt(
-                a ** 3
-            )
+        elements.setdefault(
+            "period_years",
+            period_years,
+        )
 
-            elements.setdefault(
-                "period_years",
-                period_years,
-            )
-
-            elements.setdefault(
-                "period_days",
-                period_years
-                * 365.2568983,
-            )
+        elements.setdefault(
+            "period_days",
+            period_years
+            * 365.2568983,
+        )
 
     return elements
 
@@ -718,8 +834,8 @@ def _orbit_point(
     true_anomaly_deg: float,
 ) -> list[float]:
     """
-    Convert a Keplerian orbital position
-    into heliocentric Cartesian AU.
+    Convert Keplerian orbital elements into
+    heliocentric Cartesian AU.
     """
 
     nu = math.radians(
@@ -817,29 +933,30 @@ def generate_orbit_path(
     samples: int = 360,
 ) -> list[list[float]]:
     """
-    Generate a visual orbit path for the frontend.
+    Generate a 3D orbital path for the frontend.
+
+    The visualiser currently supports elliptic
+    heliocentric solutions.
     """
 
-    a = elements.get("a")
-
-    e = elements.get(
-        "e",
-        0.0,
+    a = _number(
+        elements.get("a")
     )
 
-    inclination = elements.get(
-        "i",
-        0.0,
+    e = _number(
+        elements.get("e")
     )
 
-    node = elements.get(
-        "node",
-        0.0,
+    inclination = _number(
+        elements.get("i")
     )
 
-    arg_peri = elements.get(
-        "om",
-        0.0,
+    node = _number(
+        elements.get("node")
+    )
+
+    arg_peri = _number(
+        elements.get("om")
     )
 
     if a is None:
@@ -848,10 +965,24 @@ def generate_orbit_path(
     if e is None:
         e = 0.0
 
-    # Current visualiser supports
-    # elliptic orbits only.
-    if a <= 0 or e >= 1:
+    if inclination is None:
+        inclination = 0.0
+
+    if node is None:
+        node = 0.0
+
+    if arg_peri is None:
+        arg_peri = 0.0
+
+    if (
+        a <= 0.0
+        or e < 0.0
+        or e >= 1.0
+    ):
         return []
+
+    if samples < 2:
+        samples = 2
 
     points: list[list[float]] = []
 
@@ -881,46 +1012,59 @@ def solve_orbit(
     observations: list[Any],
 ) -> dict[str, Any]:
     """
-    Main orbit-determination pipeline.
+    Complete orbit-determination pipeline.
 
     1. Validate Find_Orb installation.
-    2. Convert frontend observations into
-       MPC-style optical observations.
-    3. Execute Bill Gray's Find_Orb.
-    4. Locate its JSON orbital solution.
+    2. Convert observations to MPC format.
+    3. Execute Find_Orb.
+    4. Read its JSON orbital solution.
     5. Extract orbital elements.
-    6. Generate a 3D visualisation path.
+    6. Generate a 3D orbit path.
     """
 
     _require_find_orb()
 
     if len(observations) < 3:
         raise ValueError(
-            "At least three observations "
-            "are required."
+            "At least three observations are required."
+        )
+
+    object_name = (
+        object_name
+        .strip()
+    )
+
+    if not object_name:
+        raise ValueError(
+            "Object name cannot be empty."
         )
 
     with tempfile.TemporaryDirectory(
         prefix="orbit-intelligence-"
     ) as temp_dir:
 
-        work_dir = Path(temp_dir)
+        work_dir = Path(
+            temp_dir
+        )
 
         input_file = (
             work_dir
             / "observations.txt"
         )
 
-        lines = [
-            _format_observation(
-                object_name=object_name,
-                time_utc=obs.time_utc,
-                ra_deg=obs.ra_deg,
-                dec_deg=obs.dec_deg,
-                magnitude=obs.magnitude,
+        lines: list[str] = []
+
+        for observation in observations:
+
+            lines.append(
+                _format_observation(
+                    object_name=object_name,
+                    time_utc=observation.time_utc,
+                    ra_deg=observation.ra_deg,
+                    dec_deg=observation.dec_deg,
+                    magnitude=observation.magnitude,
+                )
             )
-            for obs in observations
-        ]
 
         input_file.write_text(
             "\n".join(lines)
@@ -941,21 +1085,33 @@ def solve_orbit(
                 )
             )
 
-            elements = (
-                _extract_elements(
-                    raw_json
-                )
-            )
+        except RuntimeError as exc:
 
-        except RuntimeError:
+            generated_files = sorted(
+                str(
+                    path.relative_to(
+                        work_dir
+                    )
+                )
+                for path in work_dir.rglob("*")
+                if path.is_file()
+            )
 
             raise RuntimeError(
-                "Find_Orb ran but the simulator "
-                "could not locate a machine-readable "
-                "orbital solution.\n\n"
-                "Find_Orb output:\n"
+                str(exc)
+                + "\n\n"
+                + "Find_Orb output:\n"
                 + output[-6000:]
-            )
+                + "\n\n"
+                + "Generated files:\n"
+                + "\n".join(
+                    generated_files
+                )
+            ) from exc
+
+        elements = _extract_elements(
+            raw_json
+        )
 
         elements = _derive_elements(
             elements
@@ -968,27 +1124,19 @@ def solve_orbit(
         )
 
         return {
-            "engine": (
-                "Bill Gray Find_Orb"
+            "engine": "Bill Gray Find_Orb",
+
+            "object_name": object_name,
+
+            "observation_count": len(
+                observations
             ),
 
-            "object_name": (
-                object_name
-            ),
+            "elements": elements,
 
-            "observation_count": (
-                len(observations)
-            ),
+            "orbit_path_au": orbit_path,
 
-            "elements": (
-                elements
-            ),
-
-            "orbit_path_au": (
-                orbit_path
-            ),
-
-            "raw_output_tail": (
-                output[-3000:]
-            ),
+            "raw_output_tail": output[
+                -3000:
+            ],
         }
