@@ -26,32 +26,70 @@ def _require_find_orb() -> None:
     """
     Verify that the Find_Orb executable and its runtime
     configuration are available.
+
+    These artifacts are produced only by the deploy-time
+    script orbit-intelligence/render-build.sh. They are
+    intentionally NOT committed to the repository because
+    the binary is platform-specific and the DE430 ephemeris
+    is large.
     """
 
     if not FO_BINARY.exists():
         raise RuntimeError(
-            f"Find_Orb executable not found at {FO_BINARY}. "
-            "The Render build may have failed to install 'fo'."
+            f"Find_Orb executable not found at {FO_BINARY}.\n"
+            "The deploy build (render-build.sh) must compile and install 'fo'.\n"
+            "See orbit-intelligence/README.md for the required build steps."
+        )
+
+    # Guard against the common failure mode: an empty placeholder file
+    # that was accidentally committed instead of the real binary.
+    try:
+        size = FO_BINARY.stat().st_size
+    except OSError as exc:
+        raise RuntimeError(
+            f"Cannot stat Find_Orb binary at {FO_BINARY}: {exc}"
+        ) from exc
+
+    if size < 1024:  # real fo is several hundred KB to a few MB
+        raise RuntimeError(
+            f"Find_Orb binary at {FO_BINARY} is only {size} bytes.\n"
+            "This is almost certainly an empty placeholder, not a real executable.\n"
+            "Run orbit-intelligence/render-build.sh (or the equivalent deploy step)\n"
+            "so that a properly compiled 'fo' is installed."
         )
 
     if not os.access(FO_BINARY, os.X_OK):
         raise RuntimeError(
-            f"Find_Orb exists but is not executable: {FO_BINARY}"
+            f"Find_Orb exists but is not executable: {FO_BINARY}\n"
+            "Try: chmod +x " + str(FO_BINARY)
         )
 
     if not FO_CONFIG_DIR.exists():
         raise RuntimeError(
-            f"Find_Orb configuration directory not found at "
-            f"{FO_CONFIG_DIR}."
+            f"Find_Orb configuration directory not found at {FO_CONFIG_DIR}.\n"
+            "render-build.sh is responsible for creating this directory and\n"
+            "populating it with cospar.txt + the DE430 ephemeris."
         )
 
     cospar_file = FO_CONFIG_DIR / "cospar.txt"
 
     if not cospar_file.exists():
         raise RuntimeError(
-            "Find_Orb configuration is incomplete. "
-            f"Missing required file: {cospar_file}"
+            "Find_Orb configuration is incomplete.\n"
+            f"Missing required file: {cospar_file}\n"
+            "This file is copied by render-build.sh from the Find_Orb source tree."
         )
+
+    # Soft check for the planetary ephemeris (not always strictly required
+    # for short-arc optical solutions, but expected in a correct install).
+    eph_candidates = list(FO_CONFIG_DIR.glob("*.430*")) + list(
+        FO_CONFIG_DIR.glob("linux_p*.430*")
+    )
+    if not eph_candidates:
+        # Do not hard-fail; many short-arc solutions still work.
+        # Log-style message is left for the caller via the exception chain
+        # only if later steps fail.
+        pass
 
 
 def _decimal_to_ra(
